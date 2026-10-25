@@ -1,0 +1,109 @@
+@font-face { font-family: "Vazirmatn"; src: url("fonts/Vazirmatn-Regular.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Vazirmatn"; src: url("fonts/Vazirmatn-Bold.woff2") format("woff2"); font-weight: 700; font-display: swap; }
+
+:root {
+  --ink: #14303a;
+  --paper: #f5f6f2;
+  --flag: #e8641b;
+  --grass: #5f8f3e;
+  --line: #cbd3cf;
+  --muted: #5c6f75;
+  --bar-h: 64px;
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--ink); color: var(--ink);
+  font-family: "Vazirmatn", Tahoma, sans-serif; font-size: 15px; line-height: 1.6; touch-action: manipulation; }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible { outline: 3px solid var(--flag); outline-offset: 2px; }
+[hidden] { display: none !important; }
+
+#map { position: fixed; inset: 0; z-index: 1; background: #2b3a40; }
+
+/* هدف مرکز */
+#crosshair { position: fixed; z-index: 500; left: 50%; top: 50%;
+  width: 36px; height: 36px; margin: -18px 0 0 -18px; pointer-events: none; }
+#crosshair i { position: absolute; background: var(--flag); box-shadow: 0 0 0 1.5px rgba(255,255,255,.9); }
+#crosshair i:first-child { left: 17px; top: 0; width: 2px; height: 36px; }
+#crosshair i:last-child { top: 17px; left: 0; height: 2px; width: 36px; }
+
+/* نوار مختصات */
+#topbar { position: fixed; z-index: 800; top: calc(10px + var(--safe-t)); left: 10px; right: 104px; display: flex; }
+#readout { display: flex; flex-direction: column; align-items: flex-start; gap: 0; padding: 6px 12px; min-height: 48px;
+  background: var(--paper); border: 1px solid var(--line); border-radius: 10px; text-align: left; }
+#ro-latlng { font-weight: 700; font-size: 15px; letter-spacing: .2px; font-variant-numeric: tabular-nums; }
+#ro-hint { font-size: 11px; color: var(--muted); }
+
+/* قطب‌نما — عنصر شاخص */
+#compass { position: fixed; z-index: 800; top: calc(10px + var(--safe-t)); right: 10px; width: 88px;
+  display: flex; flex-direction: column; align-items: center; }
+#compass svg { display: block; filter: drop-shadow(0 2px 3px rgba(0,0,0,.35)); }
+.c-face { fill: var(--paper); stroke: var(--ink); stroke-width: 3; }
+.c-north { fill: var(--flag); }
+.c-south { fill: var(--ink); }
+.c-pin { fill: var(--paper); stroke: var(--ink); stroke-width: 1.5; }
+#c-ticks line { stroke: var(--muted); stroke-width: 1.5; }
+#c-ticks line.big { stroke: var(--ink); stroke-width: 2.5; }
+#c-needle { transition: transform .15s linear; }
+#c-text { margin-top: 2px; padding: 0 8px; background: var(--paper); border-radius: 8px; border: 1px solid var(--line);
+  display: flex; gap: 6px; align-items: baseline; font-size: 12px; white-space: nowrap; }
+#c-deg { font-size: 14px; }
+
+#gps-chip { position: fixed; z-index: 800; top: calc(66px + var(--safe-t)); left: 10px; padding: 2px 10px;
+  background: var(--ink); color: #fff; border-radius: 999px; font-size: 12px; }
+#gps-chip.weak { background: var(--flag); }
+
+#toast { position: fixed; z-index: 1200; left: 50%; bottom: calc(var(--bar-h) + var(--safe-b) + 16px); transform: translate(-50%, 12px);
+  max-width: 86vw; padding: 8px 14px; background: var(--ink); color: #fff; border-radius: 10px; opacity: 0; pointer-events: none;
+  transition: opacity .18s, transform .18s; text-align: center; }
+#toast.on { opacity: 1; transform: translate(-50%, 0); }
+
+/* نوار پایین */
+#bottombar { position: fixed; z-index: 1000; left: 0; right: 0; bottom: 0; height: calc(var(--bar-h) + var(--safe-b));
+  padding-bottom: var(--safe-b); display: flex; background: var(--ink); border-top: 3px solid var(--flag); }
+#bottombar button { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  background: none; border: 0; color: #dfe8e5; font-size: 12px; }
+#bottombar button svg { width: 24px; height: 24px; fill: currentColor; }
+#bottombar button.on { color: #fff; background: rgba(255,255,255,.1); }
+#bottombar button.following { color: var(--flag); }
+
+/* برگه‌ها */
+.sheet { position: fixed; z-index: 900; left: 0; right: 0; bottom: calc(var(--bar-h) + var(--safe-b) + 3px);
+  max-height: 52vh; overflow: auto; padding: 14px 14px 16px; background: var(--paper);
+  border-radius: 16px 16px 0 0; border: 1px solid var(--line); border-bottom: 0; box-shadow: 0 -6px 18px rgba(0,0,0,.25); }
+.sheet h2 { margin: 0 0 8px; font-size: 16px; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; }
+.sheet button { min-height: 44px; padding: 0 14px; background: #fff; border: 1px solid var(--line); border-radius: 10px; }
+.sheet button.primary { background: var(--flag); border-color: var(--flag); color: #fff; font-weight: 700; flex: 1 1 100%; }
+.sheet button.link { margin-top: 8px; width: 100%; background: none; border: 1px dashed var(--line); color: var(--muted); }
+
+#layer-list { display: grid; gap: 6px; }
+.layer-item { display: flex; align-items: center; gap: 10px; justify-content: flex-start; text-align: start; width: 100%; }
+.layer-item .dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--muted); flex: none; }
+.layer-item.active { border-color: var(--grass); background: #eef4e8; font-weight: 700; }
+.layer-item.active .dot { background: var(--grass); border-color: var(--grass); }
+.layer-item small { color: var(--muted); margin-inline-start: auto; font-weight: 400; }
+
+.seg-switch { display: flex; margin-bottom: 8px; }
+.seg-switch button { flex: 1; border-radius: 0; }
+.seg-switch button:first-child { border-radius: 0 10px 10px 0; }
+.seg-switch button:last-child { border-radius: 10px 0 0 10px; }
+.seg-switch button.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+#m-result { margin: 4px 0 10px; min-height: 3.2em; }
+#m-result b { font-size: 18px; }
+
+/* برچسب طول هر ضلع */
+.seg-label { background: none; border: 0; }
+.seg-label span { position: absolute; transform: translate(-50%, -50%); background: var(--paper); border: 1px solid var(--ink);
+  border-radius: 6px; padding: 0 5px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+
+/* نشانگر موقعیت من */
+.me { position: relative; }
+.me .arrow { position: absolute; inset: 0; transition: transform .15s linear; }
+.me .arrow svg { width: 100%; height: 100%; overflow: visible; }
+.me .arrow .cone { fill: rgba(232,100,27,.35); }
+.me .arrow .body { fill: var(--flag); stroke: #fff; stroke-width: 3; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

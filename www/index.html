@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#14303a">
+<title>نقشه میدانی</title>
+<link rel="stylesheet" href="lib/leaflet.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div id="map"></div>
+
+<!-- هدف مرکز نقشه: نقطه‌ها دقیقاً روی همین علامت ثبت می‌شوند -->
+<div id="crosshair" aria-hidden="true"><i></i><i></i></div>
+
+<header id="topbar">
+  <button id="readout" type="button" aria-label="کپی مختصات مرکز نقشه">
+    <span id="ro-latlng" dir="ltr">—</span>
+    <span id="ro-hint">برای کپی بزنید</span>
+  </button>
+</header>
+
+<div id="compass" aria-label="قطب‌نما">
+  <svg viewBox="-50 -50 100 100" width="84" height="84" aria-hidden="true">
+    <circle r="47" class="c-face"/>
+    <g id="c-ticks"></g>
+    <g id="c-needle">
+      <path d="M0,-38 L7,0 L-7,0 Z" class="c-north"/>
+      <path d="M0,38 L7,0 L-7,0 Z" class="c-south"/>
+      <circle r="3" class="c-pin"/>
+    </g>
+  </svg>
+  <div id="c-text"><b id="c-deg">—</b><span id="c-dir"></span></div>
+</div>
+
+<div id="gps-chip" hidden><span id="gps-acc"></span></div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<section id="sheet-layers" class="sheet" hidden>
+  <h2>نقشه زمینه</h2>
+  <div id="layer-list"></div>
+  <button id="neshan-key" type="button" class="link">کلید API نشان را وارد یا تغییر دهید</button>
+</section>
+
+<section id="sheet-measure" class="sheet" hidden>
+  <h2>اندازه‌گیری</h2>
+  <div class="seg-switch" role="tablist">
+    <button type="button" id="m-dist" role="tab">فاصله</button>
+    <button type="button" id="m-area" role="tab">مساحت</button>
+  </div>
+  <p id="m-result">یک حالت را انتخاب کنید و نقشه را طوری حرکت دهید که علامت وسط روی نقطه‌ی مورد نظر باشد.</p>
+  <div class="row">
+    <button type="button" id="m-add" class="primary">افزودن نقطه در مرکز</button>
+    <button type="button" id="m-undo">برگردان</button>
+    <button type="button" id="m-clear">پاک کردن</button>
+    <button type="button" id="m-end">پایان</button>
+  </div>
+</section>
+
+<nav id="bottombar">
+  <button type="button" id="b-layers"><svg viewBox="0 0 24 24"><path d="M12 3 2 8l10 5 10-5-10-5Zm-8.4 9.2L2 13l10 5 10-5-1.6-.8L12 16l-8.4-3.8Zm0 4L2 17l10 5 10-5-1.6-.8L12 20l-8.4-3.8Z"/></svg>لایه‌ها</button>
+  <button type="button" id="b-measure"><svg viewBox="0 0 24 24"><path d="M3 17 17 3l4 4L7 21l-4-4Zm3.4 0 .9.9 1.1-1.1-1.4-1.4-.6.6Zm3-3 1.6 1.6 1.1-1.1-1.6-1.6-1.1 1.1Zm3-3 1.4 1.4 1.1-1.1-1.4-1.4-1.1 1.1Z"/></svg>اندازه‌گیری</button>
+  <button type="button" id="b-locate"><svg viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm-1-6v3.1A7 7 0 0 0 5.1 11H2v2h3.1A7 7 0 0 0 11 18.9V22h2v-3.1A7 7 0 0 0 18.9 13H22v-2h-3.1A7 7 0 0 0 13 5.1V2h-2Zm1 5a5 5 0 1 1 0 10 5 5 0 0 1 0-10Z"/></svg>موقعیت من</button>
+</nav>
+
+<script src="lib/leaflet.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
