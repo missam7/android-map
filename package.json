@@ -1,17 +1,29 @@
 {
   "name": "fieldmap",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "نقشه میدانی اندروید — فاز ۱",
+  "description": "نقشه میدانی اندروید",
   "scripts": {
+    "build": "node build.mjs",
+    "postinstall": "node build.mjs",
     "sync": "cap sync android",
     "open": "cap open android"
   },
   "dependencies": {
     "@capacitor/android": "^7.0.0",
-    "@capacitor/core": "^7.0.0"
+    "@capacitor/core": "^7.0.0",
+    "@capacitor/filesystem": "^7.0.0",
+    "@capacitor/share": "^7.0.0"
   },
   "devDependencies": {
-    "@capacitor/cli": "^7.0.0"
+    "@capacitor/cli": "^7.0.0",
+    "@mapbox/shp-write": "^0.4.3",
+    "@tmcw/togeojson": "^5.8.1",
+    "@xmldom/xmldom": "^0.8.10",
+    "esbuild": "^0.24.0",
+    "jszip": "^3.10.1",
+    "proj4": "^2.12.1",
+    "shpjs": "^6.1.0",
+    "xlsx": "0.18.5"
   }
 }
