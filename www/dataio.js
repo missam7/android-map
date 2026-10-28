@@ -562,7 +562,11 @@ function toKML(layers, docName) {
     const p = f.properties || {}, g = f.geometry; if (!g) return '';
     const col = p.stroke || p['marker-color'] || p.color || layerColor || '#e8641b';
     let style;
-    if (g.type === 'Point' || g.type === 'MultiPoint') style = `<Style><IconStyle><color>${kmlColor(col)}</color><scale>1</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href></Icon></IconStyle></Style>`;
+    if (g.type === 'Point' || g.type === 'MultiPoint') {
+      const ICONS = { circle: 'shapes/placemark_circle', square: 'shapes/placemark_square', diamond: 'shapes/placemark_square', triangle: 'shapes/triangle', star: 'shapes/star', cross: 'shapes/cross-hairs', x: 'shapes/cross-hairs', pin: 'paddle/wht-blank', flag: 'shapes/flag', target: 'shapes/target' };
+      const sc = p.size ? Math.max(0.6, Math.min(1.8, p.size / 22)) : 1;
+      style = `<Style><IconStyle><color>${kmlColor(col)}</color><scale>${sc.toFixed(2)}</scale><Icon><href>http://maps.google.com/mapfiles/kml/${ICONS[p.symbol] || ICONS.circle}.png</href></Icon></IconStyle></Style>`;
+    }
     else if (/Polygon/.test(g.type)) style = `<Style><LineStyle><color>${kmlColor(col)}</color><width>${p['stroke-width'] || 2}</width></LineStyle><PolyStyle><color>${kmlColor(p.fill || col, p['fill-opacity'] == null ? 0.25 : p['fill-opacity'])}</color></PolyStyle></Style>`;
     else style = `<Style><LineStyle><color>${kmlColor(col)}</color><width>${p['stroke-width'] || 3}</width></LineStyle></Style>`;
     const ext = Object.keys(p).filter((k) => k !== 'name' && k !== 'description' && !STYLE_KEYS.has(k) && p[k] != null && typeof p[k] !== 'object')

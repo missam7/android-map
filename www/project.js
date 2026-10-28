@@ -47,6 +47,16 @@ function nextName(prefix) { const c = P.project.counters = P.project.counters ||
 
 /* ───────────── نمایش روی نقشه ───────────── */
 function colorOf(f, layer) { const p = f.properties || {}; return p.stroke || p['marker-color'] || p.color || (layer.style && layer.style.color) || '#e8641b'; }
+function geomBounds(f) {
+  const b = L.latLngBounds([]); DIO().eachCoord(f.geometry, (c) => { if (isFinite(c[0]) && isFinite(c[1])) b.extend([c[1], c[0]]); }); return b;
+}
+function featureInfo(f) {
+  const g = f.geometry; if (!g) return '';
+  if (g.type === 'Point') { const [lng, lat] = g.coordinates; return FM.fmtCoord(lat, lng).short; }
+  if (/LineString/.test(g.type)) { const parts = g.type === 'LineString' ? [g.coordinates] : g.coordinates; return FM.fmtLen(parts.reduce((a, c) => a + FM.pathLen(c.map(FM.ll2)), 0)); }
+  if (/Polygon/.test(g.type)) { const polys = g.type === 'Polygon' ? [g.coordinates] : g.coordinates; return FM.fmtArea(polys.reduce((a, pl) => a + FM.geodesicArea(pl[0].slice(0, -1).map(FM.ll2)), 0)); }
+  return g.type;
+}
 function popupFor(f, layer) {
   const p = f.properties || {}, g = f.geometry, wrap = el('div', { class: 'pop' });
   wrap.appendChild(el('div', { class: 'pop-title', text: p.name || '(بدون نام)' }));
@@ -56,19 +66,14 @@ function popupFor(f, layer) {
   let center = null;
   if (g.type === 'Point') {
     const [lng, lat, z] = g.coordinates; center = { lat, lng };
-    const u = DIO().CRS.utmOf(lat, lng);
-    rows.push(['عرض / طول', lat.toFixed(7) + ' , ' + lng.toFixed(7)]);
-    rows.push([`UTM ${u.zone}${u.hemi}`, 'E ' + u.easting.toFixed(2) + '  N ' + u.northing.toFixed(2)]);
+    rows.push([FM.coordFmt() === 'utm' ? 'مختصات UTM' : 'عرض / طول', FM.fmtCoord(lat, lng).text.replace(/^UTM\s+/, '')]);
     if (z !== undefined || isFinite(p.z)) rows.push(['ارتفاع', String(z !== undefined ? z : p.z)]);
-  } else if (/LineString/.test(g.type)) {
-    const parts = g.type === 'LineString' ? [g.coordinates] : g.coordinates;
-    rows.push(['طول', FM.fmtLen(parts.reduce((a, c) => a + FM.pathLen(c.map(FM.ll2)), 0))]);
-  } else if (/Polygon/.test(g.type)) {
+  } else if (/LineString/.test(g.type)) rows.push(['طول', featureInfo(f)]);
+  else if (/Polygon/.test(g.type)) {
     const polys = g.type === 'Polygon' ? [g.coordinates] : g.coordinates;
-    rows.push(['مساحت', FM.fmtArea(polys.reduce((a, pl) => a + FM.geodesicArea(pl[0].slice(0, -1).map(FM.ll2)), 0))]);
-    rows.push(['محیط', FM.fmtLen(polys.reduce((a, pl) => a + FM.pathLen(pl[0].map(FM.ll2)), 0))]);
+    rows.push(['مساحت', featureInfo(f)]); rows.push(['محیط', FM.fmtLen(polys.reduce((a, pl) => a + FM.pathLen(pl[0].map(FM.ll2)), 0))]);
   }
-  const skip = new Set(['name', 'description', 'stroke', 'stroke-width', 'stroke-opacity', 'fill', 'fill-opacity', 'marker-color', 'marker-size', 'color', 'isText', 'textHeight', 'rotation', 'isCircle', 'radius', 'z', 'styleUrl', 'icon', 'visibility']);
+  const skip = new Set(['name', 'description', 'stroke', 'stroke-width', 'stroke-opacity', 'fill', 'fill-opacity', 'marker-color', 'marker-size', 'color', 'isText', 'textHeight', 'rotation', 'isCircle', 'radius', 'z', 'styleUrl', 'icon', 'visibility', 'symbol', 'size']);
   Object.keys(p).filter((k) => !skip.has(k) && p[k] != null && typeof p[k] !== 'object').slice(0, 14).forEach((k) => rows.push([k, String(p[k])]));
   if (rows.length) {
     const t = el('table', { class: 'pop-tbl' });
@@ -78,37 +83,75 @@ function popupFor(f, layer) {
   const btns = el('div', { class: 'pop-btns' });
   const add = (label, fn) => btns.appendChild(el('button', { type: 'button', text: label, onclick: fn }));
   if (center && FM.route) { add('مبدا', () => { FM.route.setOrigin(center); P.map.closePopup(); }); add('مقصد', () => { FM.route.setDest(center); P.map.closePopup(); }); }
-  if (center) add('کپی', async () => { try { await navigator.clipboard.writeText(center.lat.toFixed(7) + ', ' + center.lng.toFixed(7)); toast('مختصات کپی شد.'); } catch (e) { toast('کپی انجام نشد.'); } });
-  add('ویرایش', async () => {
-    const r = await askText('ویرایش', p.name || '', { description: p.description || '' }); if (!r) return;
-    p.name = r.text || p.name; if (r.description !== undefined) p.description = r.description;
-    renderLayer(layer); saveSoon(); renderManager();
-  });
-  add('حذف', async () => {
-    if (!(await confirmBox('حذف', 'این مورد حذف شود؟'))) return;
-    layer.features = layer.features.filter((x) => x !== f); P.map.closePopup(); renderLayer(layer); saveSoon(); renderManager();
-  });
+  if (center) add('کپی', async () => { try { await navigator.clipboard.writeText(FM.fmtCoord(center.lat, center.lng).copy); toast('مختصات کپی شد.'); } catch (e) { toast('کپی انجام نشد.'); } });
+  add('ویرایش', () => editFeatureDialog(layer, f));
+  add('حذف', () => deleteFeature(layer, f));
   wrap.appendChild(btns);
   return wrap;
 }
+async function deleteFeature(layer, f) {
+  if (!(await confirmBox('حذف', 'این مورد حذف شود؟'))) return;
+  layer.features = layer.features.filter((x) => x !== f); P.map.closePopup(); renderLayer(layer); saveSoon(); renderManager();
+}
+async function editFeatureDialog(layer, f) {
+  const p = f.properties = f.properties || {}, g = f.geometry, isPt = g.type === 'Point';
+  const body = el('div', {});
+  const nm = el('input', { type: 'text', class: 'field', value: p.name || '', 'aria-label': 'نام' }); body.appendChild(nm);
+  const ds = el('textarea', { class: 'field', rows: 3, placeholder: 'توضیحات (اختیاری)' }); ds.value = p.description || ''; body.appendChild(ds);
+  let sym = null, col = null, wid = null;
+  if (isPt) sym = FM.symbolControls({ symbol: p.symbol || layer.symbol || 'circle', color: p['marker-color'] || p.color || (layer.style && layer.style.color) || '#e8641b', size: p.size || layer.size || 22 });
+  else {
+    col = el('input', { type: 'color', class: 'lcolor wide' }); col.value = /^#[0-9a-f]{6}$/i.test(p.stroke || '') ? p.stroke : ((layer.style && layer.style.color) || '#e8641b');
+    wid = el('select', { class: 'field' }, [[2, 'نازک'], [3, 'متوسط'], [5, 'ضخیم'], [8, 'خیلی ضخیم']].map(([v, t]) => el('option', { value: String(v), text: t }))); wid.value = String(p['stroke-width'] || 3);
+    body.appendChild(el('div', { class: 'frow' }, [el('label', { text: 'رنگ' }), col])); body.appendChild(el('div', { class: 'frow' }, [el('label', { text: 'ضخامت خط' }), wid]));
+  }
+  if (sym) body.appendChild(sym);
+  const r = await dialog({ title: 'ویرایش', body, focus: false, buttons: [{ label: 'انصراف', value: null }, { label: 'ذخیره', primary: true, value: true }] });
+  if (!r) return;
+  p.name = nm.value.trim() || p.name; if (ds.value.trim()) p.description = ds.value.trim(); else delete p.description;
+  if (sym) { const v = sym.get(); p.symbol = v.symbol; p['marker-color'] = v.color; p.size = v.size; }
+  else { p.stroke = col.value; p['stroke-width'] = +wid.value; if (/Polygon/.test(g.type)) p.fill = col.value; }
+  renderLayer(layer); saveSoon(); renderManager(); P.map.closePopup();
+}
+function openFeaturePopup(f) {
+  for (const [, grp] of P.groups) {
+    let hit = null; grp.eachLayer((l) => { if (l.feature === f) hit = l; });
+    if (hit) { try { hit.openPopup(); } catch (e) { /* ignore */ } return true; }
+  }
+  return false;
+}
+function focusFeature(layer, f) {
+  if (!layer.visible) { layer.visible = true; renderLayer(layer); saveSoon(); renderManager(); }
+  const g = f.geometry;
+  if (g.type === 'Point') P.map.setView([g.coordinates[1], g.coordinates[0]], Math.max(P.map.getZoom(), 18)); else { const b = geomBounds(f); if (b.isValid()) P.map.fitBounds(b, { padding: [50, 50], maxZoom: 19 }); }
+  if (FM.closeSheets) FM.closeSheets();
+  setTimeout(() => openFeaturePopup(f), 450);
+}
+function symbolFor(f, layer) { const p = f.properties || {}; return { symbol: p.symbol || layer.symbol || 'circle', size: p.size || layer.size || 22 }; }
 function renderLayer(layer) {
   const old = P.groups.get(layer.id); if (old) { P.map.removeLayer(old); P.groups.delete(layer.id); }
   if (!layer.visible) return;
-  const showLabels = layer.labels && layer.features.length <= 600;
+  const showLabels = layer.labels && layer.features.length <= 600, allowSym = layer.features.length <= 1500;
   const gj = L.geoJSON({ type: 'FeatureCollection', features: layer.features }, {
     pointToLayer(f, ll) {
       const p = f.properties || {}, col = colorOf(f, layer);
       if (p.isCircle && isFinite(p.radius) && p.radius > 0) return L.circle(ll, { radius: p.radius, color: col, weight: 2, fillColor: p.fill || col, fillOpacity: p['fill-opacity'] == null ? 0.1 : p['fill-opacity'] });
       if (p.isText) return L.marker(ll, { icon: L.divIcon({ className: 'dxf-text-icon', html: `<span style="color:${esc(col)}">${esc(p.name)}</span>`, iconSize: [0, 0] }) });
-      const m = L.circleMarker(ll, { radius: 7, color: '#fff', weight: 2, fillColor: col, fillOpacity: 1 });
-      if (showLabels && p.name) m.bindTooltip(String(p.name), { permanent: true, direction: 'right', offset: [8, 0], className: 'pt-label' });
+      const sy = symbolFor(f, layer); let m;
+      if (sy.symbol !== 'circle' && allowSym) m = L.marker(ll, { icon: FM.symbolIcon(sy.symbol, col, sy.size), keyboard: false });
+      else m = L.circleMarker(ll, { radius: Math.max(4, Math.round(sy.size / 3.2)), color: '#fff', weight: 2, fillColor: col, fillOpacity: 1 });
+      if (showLabels && p.name) m.bindTooltip(String(p.name), { permanent: true, direction: 'right', offset: [Math.round(sy.size / 2) + 2, 0], className: 'pt-label' });
       return m;
     },
     style(f) {
       const p = f.properties || {}, col = colorOf(f, layer), poly = /Polygon/.test(f.geometry.type);
       return { color: col, weight: p['stroke-width'] || 3, opacity: p['stroke-opacity'] == null ? 1 : p['stroke-opacity'], fillColor: p.fill || col, fillOpacity: poly ? (p['fill-opacity'] == null ? 0.15 : p['fill-opacity']) : 0 };
     },
-    onEachFeature(f, lyr) { if (!(f.properties && f.properties.isText)) lyr.bindPopup(() => popupFor(f, layer), { maxWidth: 280 }); }
+    onEachFeature(f, lyr) {
+      if (f.properties && f.properties.isText) return;
+      lyr.bindPopup(() => popupFor(f, layer), { maxWidth: 280 });
+      lyr.on('click', (ev) => { if (FM.isDrawingShape && FM.isDrawingShape()) { setTimeout(() => P.map.closePopup(), 0); } else L.DomEvent.stopPropagation(ev); });
+    }
   }).addTo(P.map);
   P.groups.set(layer.id, gj);
 }
@@ -164,23 +207,47 @@ async function projectsDialog() {
 }
 
 /* ───────────── پنل لایه‌ها ───────────── */
+const expanded = new Set(), listLimit = {}, listFilter = {};
+function featureRow(layer, f) {
+  const p = f.properties || {}, g = f.geometry || {};
+  let icon;
+  if (g.type === 'Point') { const sy = symbolFor(f, layer); icon = el('span', { class: 'ficon', html: FM.symbolSvg(sy.symbol, colorOf(f, layer), 20) }); }
+  else icon = el('span', { class: 'ficon', text: /Polygon/.test(g.type || '') ? '▭' : '╱', style: `color:${colorOf(f, layer)}` });
+  const b = el('button', { type: 'button', class: 'frow-item' }, [icon, el('span', { class: 'ft', html: `<b>${esc(p.name || '(بدون نام)')}</b><small dir="auto">${esc(featureInfo(f))}</small>` })]);
+  b.addEventListener('click', () => featureActions(layer, f));
+  return b;
+}
+async function featureActions(layer, f) {
+  const p = f.properties || {}, isPt = f.geometry.type === 'Point';
+  const body = el('div', {}, [el('div', { class: 'pop-sub', text: layer.name }), el('div', { dir: 'auto', text: featureInfo(f) })]);
+  let act = null;
+  const go = (a) => { act = a; document.querySelector('.overlay .modal-btns button:last-child').click(); };
+  const row = el('div', { class: 'pop-btns' });
+  if (isPt && FM.route) { const c = { lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0] }; row.appendChild(el('button', { type: 'button', text: 'مبدا', onclick: () => { FM.route.setOrigin(c); go('x'); } })); row.appendChild(el('button', { type: 'button', text: 'مقصد', onclick: () => { FM.route.setDest(c); go('x'); } })); }
+  row.appendChild(el('button', { type: 'button', text: 'ویرایش', onclick: () => go('edit') }));
+  row.appendChild(el('button', { type: 'button', text: 'حذف', onclick: () => go('del') }));
+  body.appendChild(row);
+  await dialog({ title: p.name || '(بدون نام)', body, focus: false, buttons: [{ label: 'بستن', value: 'close' }, { label: '⌖ زوم روی نقشه', primary: true, value: 'zoom' }] }).then((v) => { if (!act && v === 'zoom') act = 'zoom'; });
+  if (act === 'zoom') focusFeature(layer, f); else if (act === 'edit') editFeatureDialog(layer, f); else if (act === 'del') deleteFeature(layer, f);
+}
 function renderManager() {
   const box = $('#project-body'); if (!box || !P.project) return;
   box.textContent = '';
   box.appendChild(el('button', { type: 'button', class: 'proj-name', onclick: projectsDialog, html: `<span>پروژه: <b>${esc(P.project.name)}</b></span><small>تغییر / جدید ▾</small>` }));
   const actions = el('div', { class: 'row' });
   actions.appendChild(el('button', { type: 'button', class: 'primary', text: '＋ افزودن فایل', onclick: () => $('#file-in').click() }));
-  actions.appendChild(el('button', { type: 'button', text: 'خروجی', onclick: exportDialog }));
+  actions.appendChild(el('button', { type: 'button', text: 'خروجی', onclick: () => exportDialog() }));
   box.appendChild(actions);
   const list = el('div', { class: 'llist' });
   P.project.layers.forEach((l) => {
     const cb = el('input', { type: 'checkbox', 'aria-label': 'نمایش لایه' }); cb.checked = l.visible;
     cb.addEventListener('change', () => { l.visible = cb.checked; renderLayer(l); saveSoon(); });
-    const col = el('input', { type: 'color', class: 'lcolor', 'aria-label': 'رنگ لایه' }); col.value = /^#[0-9a-f]{6}$/i.test((l.style && l.style.color) || '') ? l.style.color : '#e8641b';
-    col.addEventListener('change', () => { l.style = Object.assign({}, l.style, { color: col.value }); renderLayer(l); saveSoon(); });
-    const name = el('button', { type: 'button', class: 'lname', html: `<b>${esc(l.name)}</b><small>${nf(l.features.length)} عارضه${l.draw ? ' · ترسیم‌ها' : ''}</small>`, onclick: async () => { const t = await askText('نام لایه', l.name); if (t && t.text) { l.name = t.text; saveSoon(); renderManager(); } } });
-    const row = el('div', { class: 'lrow' }, [cb, col, name]);
+    const open = expanded.has(l.id);
+    const caret = el('button', { type: 'button', class: 'mini caret', text: open ? '▾' : '◂', 'aria-label': open ? 'بستن فهرست' : 'فهرست عارضه‌ها', onclick: () => { if (open) expanded.delete(l.id); else expanded.add(l.id); renderManager(); } });
+    const name = el('button', { type: 'button', class: 'lname', html: `<b>${esc(l.name)}</b><small>${nf(l.features.length)} عارضه${l.draw ? ' · ترسیم‌ها' : ''}</small>`, onclick: () => { if (open) expanded.delete(l.id); else expanded.add(l.id); renderManager(); } });
+    const row = el('div', { class: 'lrow' }, [cb, name]);
     const mk = (label, title, fn) => row.appendChild(el('button', { type: 'button', class: 'mini', text: label, title, 'aria-label': title, onclick: fn }));
+    mk('نماد', 'نماد و رنگ لایه', async () => { const v = await FM.pickSymbol({ symbol: l.symbol || 'circle', color: (l.style && l.style.color) || '#e8641b', size: l.size || 22 }, 'نماد و رنگ پیش‌فرض لایه'); if (!v) return; l.symbol = v.symbol; l.size = v.size; l.style = Object.assign({}, l.style, { color: v.color }); renderLayer(l); saveSoon(); });
     mk('Aa', 'برچسب‌ها', () => { l.labels = !l.labels; renderLayer(l); saveSoon(); toast(l.labels ? 'برچسب‌ها روشن شد.' : 'برچسب‌ها خاموش شد.'); });
     mk('⌖', 'زوم', () => { zoomTo([l]); });
     mk('✕', 'حذف', async () => {
@@ -188,7 +255,25 @@ function renderManager() {
       if (l.draw) { l.features = []; renderLayer(l); } else { P.project.layers = P.project.layers.filter((x) => x !== l); const g = P.groups.get(l.id); if (g) P.map.removeLayer(g); P.groups.delete(l.id); }
       saveSoon(); renderManager();
     });
+    row.appendChild(caret);
     list.appendChild(row);
+    if (open) {
+      const fl = el('div', { class: 'flist' });
+      const search = el('input', { type: 'search', class: 'field small', placeholder: 'جستجو در نام عارضه‌ها…', value: listFilter[l.id] || '' });
+      search.addEventListener('input', () => { listFilter[l.id] = search.value; listLimit[l.id] = 60; fillItems(); });
+      fl.appendChild(search);
+      const items = el('div', { class: 'fitems' }); fl.appendChild(items);
+      const fillItems = () => {
+        items.textContent = '';
+        const q = (listFilter[l.id] || '').trim().toLowerCase();
+        const all = l.features.filter((f) => !q || String((f.properties || {}).name || '').toLowerCase().includes(q));
+        const lim = listLimit[l.id] || 60;
+        if (!all.length) items.appendChild(el('div', { class: 'hint', text: l.features.length ? 'موردی پیدا نشد.' : 'این لایه عارضه‌ای ندارد.' }));
+        all.slice(0, lim).forEach((f) => items.appendChild(featureRow(l, f)));
+        if (all.length > lim) items.appendChild(el('button', { type: 'button', class: 'more', text: `نمایش بیشتر (${nf(all.length - lim)} مورد دیگر)`, onclick: () => { listLimit[l.id] = lim + 100; fillItems(); } }));
+      };
+      fillItems(); list.appendChild(fl);
+    }
   });
   box.appendChild(list);
 }
@@ -306,6 +391,6 @@ async function exportDialog(preselect) {
   } catch (e) { toast('خطا در ساخت خروجی: ' + e.message, 6000); }
 }
 
-FM.project = { init, addLayer, addFeature, drawLayer, nextName, zoomTo, importFiles, exportDialog, renderManager, saveSoon, current: () => P.project, boundsOf, selectCrs };
+FM.project = { init, addLayer, addFeature, drawLayer, nextName, zoomTo, importFiles, exportDialog, renderManager, saveSoon, current: () => P.project, boundsOf, selectCrs, focusFeature, openFeaturePopup, editFeatureDialog, renderLayer, groups: P.groups };
 $('#file-in').addEventListener('change', async (e) => { const fl = Array.from(e.target.files); e.target.value = ''; await importFiles(fl); });
 })(window);

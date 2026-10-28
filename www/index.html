@@ -13,9 +13,11 @@
 <div id="crosshair" aria-hidden="true"><i></i><i></i></div>
 
 <header id="topbar">
-  <button id="ro-ll" type="button" class="ro" aria-label="کپی عرض و طول جغرافیایی"><span dir="ltr" id="ro-latlng">—</span></button>
-  <button id="ro-ut" type="button" class="ro" aria-label="کپی مختصات UTM"><span dir="ltr" id="ro-utm">—</span></button>
+  <button id="ro" type="button" class="ro" aria-label="کپی مختصات مرکز نقشه"><span dir="ltr" id="ro-text">—</span></button>
+  <div class="fmt-switch" role="group" aria-label="فرمت مختصات"><button type="button" id="fmt-geo">جغرافیایی</button><button type="button" id="fmt-utm">UTM</button></div>
 </header>
+<div id="mode-chip" hidden></div>
+<div id="lp-ring" aria-hidden="true" hidden></div>
 
 <div id="compass" aria-label="قطب‌نما">
   <svg viewBox="-50 -50 100 100" width="84" height="84" aria-hidden="true">
@@ -26,7 +28,7 @@
   <div id="c-text"><b id="c-deg">—</b><span id="c-dir"></span></div>
 </div>
 
-<div id="gps-chip" hidden><div id="gps-acc"></div><div id="gps-utm" dir="ltr"></div></div>
+<div id="gps-chip" hidden><div id="gps-acc"></div><div id="gps-pos" dir="ltr"></div></div>
 <div id="toast" role="status" aria-live="polite"></div>
 
 <div id="nav-hud" hidden>
@@ -36,10 +38,18 @@
 </div>
 
 <!-- نقشه‌ی زمینه -->
-<section id="sheet-layers" class="sheet" hidden>
+<section id="sheet-layers" class="sheet tall" hidden>
   <h2>نقشه‌ی زمینه</h2>
   <div id="layer-list"></div>
-  <button id="neshan-key" type="button" class="link">کلید API نشان را وارد یا تغییر دهید</button>
+  <h3>لایه‌های رویه (روی هر نقشه‌ای)</h3>
+  <div id="overlay-list"></div>
+  <h3>لایه‌های برداری</h3>
+  <div id="ref-list"></div>
+  <button id="add-wfs" type="button" class="link">＋ افزودن لایه‌ی دیگر از سرور شهرداری مشهد (نواحی، محله‌ها، …)</button>
+  <h3>گزینه‌ها</h3>
+  <label class="chk"><input type="checkbox" id="opt-parcel"> انتخاب پارسل مشهد با لمس نقشه (روی نقشه‌ی شهرداری مشهد خودکار فعال است)</label>
+  <label class="chk"><input type="checkbox" id="opt-cross"> نمایش علامت مرکز نقشه</label>
+  <button id="open-settings" type="button" class="link">⚙ تنظیمات و کلیدها (Google، پارسل مشهد، سحاک، نشان)</button>
   <button id="clear-cache" type="button" class="link">پاک کردن کش نقشه‌ی ذخیره‌شده روی گوشی</button>
 </section>
 
@@ -69,6 +79,8 @@
     <button type="button" id="d-end">پایان</button>
   </div>
   <label class="chk"><input type="checkbox" id="d-quick" checked> ثبت سریع نقطه (نام خودکار P1، P2، …)</label>
+  <div class="row symrow"><button type="button" id="d-symbol"><span id="d-symbol-prev"></span> نماد پیش‌فرض نقطه‌ها</button></div>
+  <p class="hint">میان‌بر: روی هر جای نقشه انگشت را یک ثانیه نگه دارید تا همان‌جا یک نقطه‌ی جدید ثبت شود.</p>
   <div class="rec-row"><button type="button" id="d-rec">● شروع ضبط مسیر حرکت</button><span id="d-rec-info"></span></div>
 </section>
 
@@ -81,10 +93,11 @@
     <button type="button" id="r-d-center" class="mini2">مرکز نقشه</button><button type="button" id="r-swap" class="mini2" aria-label="جابه‌جایی مبدا و مقصد">⇅</button></div>
   <p class="hint">می‌توانید روی هر نقطه‌ی ثبت‌شده روی نقشه بزنید و «مبدا» یا «مقصد» را انتخاب کنید.</p>
   <div class="row">
-    <select id="r-engine" class="field"><option value="auto">خودکار (نشان ← OSRM ← مستقیم)</option><option value="neshan">فقط نشان</option><option value="osrm">فقط OSRM</option><option value="direct">خط مستقیم (بدون اینترنت)</option></select>
+    <select id="r-engine" class="field"><option value="auto">خودکار (گوگل ← OSRM ← مستقیم)</option><option value="google">فقط گوگل (با ترافیک، نیاز به کلید)</option><option value="osrm">فقط OSRM (بدون ترافیک)</option><option value="direct">خط مستقیم (بدون اینترنت)</option></select>
   </div>
   <div class="seg-switch"><button type="button" id="r-mode-fast">سریع‌ترین</button><button type="button" id="r-mode-short">کوتاه‌ترین</button></div>
   <div class="row"><button type="button" id="r-go" class="primary">مسیریابی</button><button type="button" id="r-start" class="ok" disabled>شروع هدایت</button><button type="button" id="r-clear">پاک کردن</button></div>
+  <div class="row"><button type="button" id="r-gmaps">باز کردن در Google Maps (هدایت با ترافیک زنده)</button><button type="button" id="r-traffic">ترافیک روی نقشه</button></div>
   <div id="r-summary"></div>
   <div id="r-steps"></div>
 </section>
@@ -104,6 +117,7 @@
 <script src="util.js"></script>
 <script src="dataio.js"></script>
 <script src="tiles.js"></script>
+<script src="vec.js"></script>
 <script src="project.js"></script>
 <script src="route.js"></script>
 <script src="app.js"></script>

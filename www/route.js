@@ -54,21 +54,31 @@ function faInstr(type, modifier, name, exit) {
 }
 const ARROW = (type, mod) => { if (type === 'arrive') return '⚑'; if (/roundabout|rotary/.test(type || '')) return '⟳'; if (/uturn/.test(mod || '')) return '↶'; if (/left/.test(mod || '')) return /slight/.test(mod) ? '↖' : '↰'; if (/right/.test(mod || '')) return /slight/.test(mod) ? '↗' : '↱'; return '↑'; };
 
-function parseNeshan(j) {
+const parseSec = (v) => (typeof v === 'string' ? parseFloat(v) : Number(v)) || 0;
+function gMan(m) {
+  m = String(m || '');
+  const side = /LEFT/.test(m) ? 'left' : /RIGHT/.test(m) ? 'right' : '';
+  if (/UTURN/.test(m)) return { type: 'turn', mod: 'uturn' };
+  if (/ROUNDABOUT/.test(m)) return { type: 'roundabout', mod: side };
+  if (/MERGE/.test(m)) return { type: 'merge', mod: side };
+  if (/RAMP/.test(m)) return { type: 'on ramp', mod: side };
+  if (/FORK/.test(m)) return { type: 'fork', mod: side };
+  if (/TURN_SLIGHT/.test(m)) return { type: 'turn', mod: 'slight ' + side };
+  if (/TURN_SHARP/.test(m)) return { type: 'turn', mod: 'sharp ' + side };
+  if (/TURN/.test(m)) return { type: 'turn', mod: side };
+  if (/DEPART/.test(m)) return { type: 'depart', mod: '' };
+  if (/NAME_CHANGE/.test(m)) return { type: 'new name', mod: '' };
+  return { type: 'continue', mod: 'straight' };
+}
+function parseGoogle(j) {
   return (j.routes || []).map((r) => {
-    const steps = []; let dist = 0, dur = 0;
-    (r.legs || []).forEach((leg) => {
-      dist += num(leg.distance); dur += num(leg.duration);
-      (leg.steps || []).forEach((s) => {
-        const pl = s.polyline && (typeof s.polyline === 'string' ? s.polyline : (s.polyline.points || s.polyline.encoded));
-        const pts = typeof pl === 'string' ? decodePolyline(pl) : [];
-        steps.push({ text: s.instruction || faInstr(s.type, s.modifier, s.name), dist: num(s.distance), loc: normLoc(s.start_location) || pts[0] || null, type: s.type, mod: s.modifier, _pts: pts });
-      });
-    });
-    const ov = r.overview_polyline && (typeof r.overview_polyline === 'string' ? r.overview_polyline : r.overview_polyline.points);
-    const coords = ov ? decodePolyline(ov) : [].concat(...steps.map((s) => s._pts));
-    steps.forEach((s) => { delete s._pts; });
-    return { coords, distance: dist, duration: dur, steps, provider: 'neshan' };
+    const steps = [];
+    (r.legs || []).forEach((leg) => (leg.steps || []).forEach((s) => {
+      const ni = s.navigationInstruction || {}, m = gMan(ni.maneuver), ll = s.startLocation && s.startLocation.latLng;
+      steps.push({ text: ni.instructions || faInstr(m.type, m.mod, ''), dist: s.distanceMeters || 0, loc: ll ? [ll.latitude, ll.longitude] : null, type: m.type, mod: m.mod });
+    }));
+    const enc = r.polyline && r.polyline.encodedPolyline;
+    return { coords: enc ? decodePolyline(enc) : [], distance: r.distanceMeters || 0, duration: parseSec(r.duration), staticDuration: parseSec(r.staticDuration), steps, provider: 'google' };
   }).filter((r) => r.coords.length > 1);
 }
 function parseOsrm(j) {
@@ -81,11 +91,15 @@ function parseOsrm(j) {
     return { coords: r.geometry.coordinates.map((c) => [c[1], c[0]]), distance: r.distance, duration: r.duration, steps, provider: 'osrm' };
   });
 }
-async function fetchNeshan(o, d) {
-  const key = store.get('neshanKey', ''); if (!key) throw new Error('کلید نشان وارد نشده است.');
-  const j = await httpJson(`https://api.neshan.org/v4/direction?type=car&origin=${o.lat},${o.lng}&destination=${d.lat},${d.lng}&alternative=true`, { 'Api-Key': key });
-  if (j.status && j.status !== 'Ok' && !j.routes) throw new Error('پاسخ نشان: ' + (j.message || j.status));
-  const r = parseNeshan(j); if (!r.length) throw new Error('نشان مسیری برنگرداند.'); return r;
+async function fetchGoogle(o, d) {
+  const key = store.get('googleKey', ''); if (!key) throw new Error('کلید Google Maps Platform وارد نشده است.');
+  const Http = root.Lib && root.Lib.Http; if (!Http) throw new Error('لایه‌ی شبکه‌ی بومی در دسترس نیست.');
+  const ll = (p) => ({ location: { latLng: { latitude: p.lat, longitude: p.lng } } });
+  const mask = 'routes.duration,routes.staticDuration,routes.distanceMeters,routes.polyline.encodedPolyline,routes.legs.steps.distanceMeters,routes.legs.steps.polyline.encodedPolyline,routes.legs.steps.startLocation,routes.legs.steps.navigationInstruction';
+  const r = await Http.post({ url: 'https://routes.googleapis.com/directions/v2:computeRoutes', headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': key, 'X-Goog-FieldMask': mask }, data: { origin: ll(o), destination: ll(d), travelMode: 'DRIVE', routingPreference: 'TRAFFIC_AWARE', computeAlternativeRoutes: true, languageCode: 'fa', units: 'METRIC' }, responseType: 'json', connectTimeout: 15000, readTimeout: 25000 });
+  const j = typeof r.data === 'string' ? JSON.parse(r.data) : r.data;
+  if (r.status >= 400) throw new Error('HTTP ' + r.status + (j && j.error && j.error.message ? ' — ' + j.error.message : ''));
+  const rs = parseGoogle(j || {}); if (!rs.length) throw new Error('گوگل مسیری برنگرداند.'); return rs;
 }
 async function fetchOsrm(o, d) {
   const j = await httpJson(`https://router.project-osrm.org/route/v1/driving/${o.lng},${o.lat};${d.lng},${d.lat}?overview=full&geometries=geojson&steps=true&alternatives=true`);
@@ -96,14 +110,14 @@ function directRoute(o, d) {
   return [{ coords: [[o.lat, o.lng], [d.lat, d.lng]], distance: dist, duration: dist / 1.3, steps: [{ text: 'مستقیم به سمت مقصد بروید', dist, loc: [o.lat, o.lng], type: 'depart' }, { text: 'به مقصد رسیدید', dist: 0, loc: [d.lat, d.lng], type: 'arrive' }], provider: 'direct' }];
 }
 async function compute(o, d, engine) {
-  const tried = [];
-  const order = engine === 'auto' ? [store.get('neshanKey', '') ? 'neshan' : null, 'osrm', 'direct'].filter(Boolean) : [engine, 'direct'].filter((v, i, a) => a.indexOf(v) === i);
+  const tried = [], hasKey = !!store.get('googleKey', '');
+  const order = engine === 'auto' ? [hasKey ? 'google' : null, 'osrm', 'direct'].filter(Boolean) : [engine, 'direct'].filter((v, i, a) => a.indexOf(v) === i);
   for (const e of order) {
     try {
-      if (e === 'neshan') return await fetchNeshan(o, d);
+      if (e === 'google') return await fetchGoogle(o, d);
       if (e === 'osrm') return await fetchOsrm(o, d);
-      if (e === 'direct') { if (tried.length) toast('مسیریابی آنلاین ممکن نشد (' + tried.join(' | ') + ') — خط مستقیم نمایش داده شد.', 6000); return directRoute(o, d); }
-    } catch (err) { tried.push((e === 'neshan' ? 'نشان' : 'OSRM') + ': ' + (err.message || err)); }
+      if (e === 'direct') { if (tried.length) toast('مسیریابی آنلاین ممکن نشد (' + tried.join(' | ') + ') — خط مستقیم نمایش داده شد.', 6500); return directRoute(o, d); }
+    } catch (err) { tried.push((e === 'google' ? 'گوگل' : 'OSRM') + ': ' + (err.message || err)); }
   }
   return directRoute(o, d);
 }
@@ -142,7 +156,7 @@ function pickIndex() {
   routes.forEach((r, i) => { const v = mode === 'fast' ? r.duration : r.distance, b = mode === 'fast' ? routes[best].duration : routes[best].distance; if (v < b) best = i; });
   return best;
 }
-const ENGINE_FA = { neshan: 'نشان', osrm: 'OSRM', direct: 'خط مستقیم' };
+const ENGINE_FA = { google: 'گوگل · با ترافیک', osrm: 'OSRM · بدون ترافیک', direct: 'خط مستقیم' };
 function showRoutes(fit) {
   group.clearLayers(); const box = $('#r-summary'), stepsBox = $('#r-steps'); stepsBox.textContent = '';
   if (!routes.length) { box.textContent = ''; $('#r-start').disabled = true; return; }
@@ -153,6 +167,7 @@ function showRoutes(fit) {
   const line = L.polyline(r.coords, { color: r.provider === 'direct' ? '#e8641b' : '#1f6feb', weight: 6, dashArray: r.provider === 'direct' ? '10 8' : null }).addTo(group);
   const fast = routes.reduce((a, b) => (b.duration < a.duration ? b : a)), short = routes.reduce((a, b) => (b.distance < a.distance ? b : a));
   let html = `<b>${fmtLen(r.distance)}</b> · ${r.provider === 'direct' ? 'حدود ' : ''}${fmtDur(r.duration)} <small>(${ENGINE_FA[r.provider]})</small>`;
+  if (r.staticDuration && r.duration - r.staticDuration > 60) html += `<br><small>تأخیر ترافیک: حدود ${fmtDur(r.duration - r.staticDuration)}</small>`;
   if (routes.length > 1) html += `<br><small>سریع‌ترین: ${fmtLen(fast.distance)} / ${fmtDur(fast.duration)} — کوتاه‌ترین: ${fmtLen(short.distance)} / ${fmtDur(short.duration)}</small>`;
   if (r.provider === 'direct') html += '<br><small>مسیر جاده‌ای در دسترس نبود؛ هدایت به‌صورت فاصله و جهت مستقیم تا مقصد است.</small>';
   box.innerHTML = html;
@@ -228,6 +243,15 @@ function onFix(fix) {
   if (bucket < 3 && !nav.spoken[idx + ':' + bucket]) { nav.spoken[idx + ':' + bucket] = 1; speak(bucket === 0 ? s.text : `${fmtLen(Math.round(dm / 10) * 10)} دیگر، ${s.text}`); }
 }
 
+
+async function openInGoogleMaps() {
+  if (!dest) { toast('اول مقصد را مشخص کنید.'); return; }
+  const q = (p) => p.lat.toFixed(6) + ',' + p.lng.toFixed(6);
+  let url = 'https://www.google.com/maps/dir/?api=1&destination=' + q(dest) + '&travelmode=driving&dir_action=navigate';
+  if (origin && !origin.me) url += '&origin=' + q(origin);
+  try { await root.Lib.App.openUrl({ url }); } catch (e) { window.open(url, '_blank'); }
+}
+
 /* ───────────── اتصال به رابط ───────────── */
 function init(m) {
   map = m; group.addTo(map); drawMarks();
@@ -237,6 +261,8 @@ function init(m) {
   $('#r-swap').addEventListener('click', () => { const t = origin; origin = dest; dest = t; drawMarks(); });
   $('#r-go').addEventListener('click', go);
   $('#r-clear').addEventListener('click', clear);
+  $('#r-gmaps').addEventListener('click', openInGoogleMaps);
+  $('#r-traffic').addEventListener('click', () => { const on = FM.tiles.toggleTraffic(map); $('#r-traffic').classList.toggle('on', on); toast(on ? 'نقشه‌ی ترافیک گوگل روشن شد.' : 'به نقشه‌ی قبلی برگشت.'); if (FM.refreshBaseList) FM.refreshBaseList(); });
   $('#r-start').addEventListener('click', startNav);
   $('#nav-stop').addEventListener('click', () => stopNav(false));
   $('#r-engine').value = store.get('engine', 'auto'); $('#r-engine').addEventListener('change', () => store.set('engine', $('#r-engine').value));
@@ -245,5 +271,5 @@ function init(m) {
   const v = $('#nav-voice'); v.checked = store.get('voice', false); v.addEventListener('change', () => { store.set('voice', v.checked); if (v.checked) speak('صدای راهنما روشن شد'); });
   if (FM.gps) FM.gps.onFix(onFix);
 }
-FM.route = { init, setOrigin, setDest, clear, _t: { decodePolyline, parseNeshan, parseOsrm, snap, prep, faInstr } };
+FM.route = { init, setOrigin, setDest, clear, _t: { decodePolyline, parseGoogle, parseOsrm, snap, prep, faInstr } };
 })(window);

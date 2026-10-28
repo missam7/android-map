@@ -8,5 +8,8 @@ import shpwrite from '@mapbox/shp-write';
 import { CapacitorHttp } from '@capacitor/core';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
+import { App } from '@capacitor/app';
+import { VectorTile } from '@mapbox/vector-tile';
+import { PbfReader } from 'pbf';
 
-window.Lib = { proj4, togeojson, shp, JSZip, XLSX, shpwrite, Http: CapacitorHttp, Filesystem, Directory, Encoding, Share };
+window.Lib = { proj4, togeojson, shp, JSZip, XLSX, shpwrite, Http: CapacitorHttp, Filesystem, Directory, Encoding, Share, App, VectorTile, PbfReader };
