@@ -7,6 +7,7 @@
 <title>نقشه میدانی</title>
 <link rel="stylesheet" href="lib/leaflet.css">
 <link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="theme.css">
 </head>
 <body>
 <div id="map"></div>
@@ -49,6 +50,7 @@
   <h3>گزینه‌ها</h3>
   <label class="chk"><input type="checkbox" id="opt-parcel"> انتخاب پارسل مشهد با لمس نقشه (روی نقشه‌ی شهرداری مشهد خودکار فعال است)</label>
   <label class="chk"><input type="checkbox" id="opt-cross"> نمایش علامت مرکز نقشه</label>
+  <label class="chk"><input type="checkbox" id="opt-autoinfo" checked> نوشتن خودکار استان/شهرستان/ناحیه در توضیحات نقطه‌ها</label>
   <button id="open-settings" type="button" class="link">⚙ تنظیمات و کلیدها (Google، پارسل مشهد، سحاک، نشان)</button>
   <button id="clear-cache" type="button" class="link">پاک کردن کش نقشه‌ی ذخیره‌شده روی گوشی</button>
 </section>
@@ -93,7 +95,14 @@
     <button type="button" id="r-d-center" class="mini2">مرکز نقشه</button><button type="button" id="r-swap" class="mini2" aria-label="جابه‌جایی مبدا و مقصد">⇅</button></div>
   <p class="hint">می‌توانید روی هر نقطه‌ی ثبت‌شده روی نقشه بزنید و «مبدا» یا «مقصد» را انتخاب کنید.</p>
   <div class="row">
-    <select id="r-engine" class="field"><option value="auto">خودکار (گوگل ← OSRM ← مستقیم)</option><option value="google">فقط گوگل (با ترافیک، نیاز به کلید)</option><option value="osrm">فقط OSRM (بدون ترافیک)</option><option value="direct">خط مستقیم (بدون اینترنت)</option></select>
+  <select id="r-engine" class="field">
+  <option value="auto">خودکار (نشان ← گوگل ← OSRM ← مسیریاب داخلی)</option>
+  <option value="neshan">نشان (با ترافیک ایران)</option>
+  <option value="google">گوگل (با ترافیک)</option>
+  <option value="osrm">OSRM</option>
+  <option value="local">مسیریاب داخلی برنامه (OSM + A*)</option>
+  <option value="direct">خط مستقیم</option>
+</select>
   </div>
   <div class="seg-switch"><button type="button" id="r-mode-fast">سریع‌ترین</button><button type="button" id="r-mode-short">کوتاه‌ترین</button></div>
   <div class="row"><button type="button" id="r-go" class="primary">مسیریابی</button><button type="button" id="r-start" class="ok" disabled>شروع هدایت</button><button type="button" id="r-clear">پاک کردن</button></div>
@@ -114,12 +123,12 @@
 <script src="vendor.js"></script>
 <script src="lib/leaflet.js"></script>
 <script src="util.js"></script>
-<script src="util.js"></script>
 <script src="config.js"></script>
 <script src="admin.js"></script>
 <script src="dataio.js"></script>
 <script src="tiles.js"></script>
 <script src="vec.js"></script>
+<script src="localroute.js"></script>
 <script src="project.js"></script>
 <script src="route.js"></script>
 <script src="app.js"></script>
