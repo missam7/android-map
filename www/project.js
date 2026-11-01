@@ -165,7 +165,14 @@ function zoomTo(layers) { const b = boundsOf(layers); if (b.isValid()) P.map.fit
 
 /* ───────────── عملیات روی پروژه ───────────── */
 function addLayer(l) { const layer = newLayer(l.name, l.features, { style: l.style, labels: l.labels }); if (l.style) layer.style = l.style; P.project.layers.push(layer); renderLayer(layer); saveSoon(); renderManager(); return layer; }
-function addFeature(feature) { const dl = drawLayer(); dl.features.push(withId(feature)); if (!dl.visible) dl.visible = true; renderLayer(dl); saveSoon(); renderManager(); return dl; }
+function addFeature(feature) {
+  const dl = drawLayer(); dl.features.push(withId(feature)); if (!dl.visible) dl.visible = true;
+  renderLayer(dl); saveSoon(); renderManager();
+  if (FM.admin && store.get('autoInfo', true)) {
+    FM.admin.annotate(feature, () => { renderLayer(dl); saveSoon(); renderManager(); });
+  }
+  return dl;
+}
 async function loadProject(id) {
   let p = null; try { p = await DB.get(id); } catch (e) { /* ignore */ }
   if (!p) return false; P.project = p; store.set('curProject', id); renderAll(); renderManager(); return true;
