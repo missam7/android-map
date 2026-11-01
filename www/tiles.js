@@ -22,7 +22,9 @@ const LAYERS = [
 ];
 // لایه‌های رویه (شفاف) که روی هر نقشه‌ی زمینه‌ای قرار می‌گیرند
 const OVERLAYS = [
-  { id: 'orm', name: 'خطوط راه‌آهن (OpenRailwayMap)', max: 19, sub: 'abc', referer: 'https://www.openrailwaymap.org/', url: 'https://{s}.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png', opacity: 0.9 }
+  { id: 'orm', name: 'خطوط راه‌آهن (OpenRailwayMap)', max: 19, sub: 'abc', referer: 'https://www.openrailwaymap.org/', url: 'https://{s}.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png', opacity: 0.9 },
+  { id: 'gtr', name: 'ترافیک زنده‌ی گوگل (روی هر نقشه)', max: 20, sub: '0123', opacity: 0.85,
+    url: 'https://mt{s}.google.com/vt?lyrs=h,traffic&hl=fa&style=3&x={x}&y={y}&z={z}' }
 ];
 
 /* کش تایل در IndexedDB */
