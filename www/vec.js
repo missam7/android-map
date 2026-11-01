@@ -33,8 +33,8 @@ async function httpText(url, headers, timeout) {
 
 /* ───────────── سحاک: تایل برداری (MVT) ───────────── */
 const SAHAK = {
-  mvtProvince: { name: 'استان‌ها (سحاک)', min: 4, max: 8, color: '#ff6600', label: true },
-  mvtRegUnit: { name: 'نواحی / واحدهای ثبتی (سحاک)', min: 6, max: 12, color: '#00b562', label: true },
+  provinces: { name: 'استان‌ها', typeName: 'Newosm:provinces', color: '#ff6600', weight: 2.6, fill: 0.02, minLabelZoom: 6 },
+  nahie:     { name: 'نواحی شهرداری مشهد', typeName: 'BaseMap:marz_nahie', color: '#00b562', weight: 2.2, fill: 0.03, minLabelZoom: 12 },
   mvtPlaq: { name: 'پلاک‌های ثبتی (سحاک)', min: 8, max: 12, color: '#c99a00', label: false },
   mvtCadastre: { name: 'کاداستر (سحاک)', min: 12, max: 16, color: '#0094c4', label: false }
 };
@@ -43,7 +43,8 @@ const pickName = (p) => { if (!p) return ''; for (const k of NAME_KEYS) if (p[k]
 let authWarnedAt = 0;
 function sahakHeaders() {
   const h = { Authorization: 'Bearer null', Referer: 'https://sahak.ssaa.ir/app/map', Accept: 'application/x-protobuf,*/*', 'User-Agent': UA_DESKTOP, 'Accept-Language': 'fa,en;q=0.8' };
-  const c = store.get('sahakCookie', ''); if (c) h.Cookie = c.trim();
+  const c = FM.cfg('sahakCookie'); if (c) h.Cookie = c.trim();
+
   return h;
 }
 const inflight = new Map();
@@ -199,7 +200,7 @@ async function toggleRef(id, on) {
   if (!on) { if (active[id]) { map.removeLayer(active[id]); delete active[id]; } setRefOn(id, false); status[id] = ''; renderRefList(); return; }
   const sk = SAHAK[id];
   if (sk) {
-    if (!store.get('sahakCookie', '')) { toast('برای لایه‌های سحاک، کوکی ورود را در «تنظیمات و کلیدها» وارد کنید.', 5000); renderRefList(); return; }
+    if (!FM.cfg('sahakCookie')) { toast('لایه‌ی کاداستر سحاک نیاز به کوکی دارد (اختیاری). استان و شهرستان بدون سحاک کار می‌کند.', 5000); renderRefList(); return; }
     active[id] = new SahakGrid(id, sk).addTo(map); setRefOn(id, true); status[id] = `از زوم ${nf(sk.min)} به بعد دیده می‌شود`; renderRefList(); return;
   }
   const def = allDefs()[id]; if (!def) return;
@@ -269,8 +270,8 @@ const clearParcel = () => { if (parcelHi) { map.removeLayer(parcelHi); parcelHi 
 const parcelMode = () => FM.store.get('base', '') === 'mashhad' || store.get('parcelManual', false);
 async function parcelClick(ll) {
   clearParcel();
-  const token = store.get('mashhadToken', '');
-  if (!token) { await dialog({ title: 'توکن پارسل مشهد لازم است', body: '<p>برای استعلام پارسل باید توکن سرویس <b>websdi.mashhad.ir</b> را در «تنظیمات و کلیدها» وارد کنید. همان مقدار <code dir="ltr">MASHHAD_API_KEY</code> داخل فایل <code dir="ltr">server.js</code> قدیمی شماست.</p>' }); return; }
+  const token = FM.cfg('mashhadToken');
+  if (!token) { toast('توکن پارسل مشهد در config.js تنظیم نشده است.', 5000); return; }
   toast('در حال استعلام پلاک…', 2000);
   const cql = `INTERSECTS(wkb_geometry,POINT(${ll.lat} ${ll.lng}))`;
   const url = 'https://websdi.mashhad.ir/api/proxy/geotajak/wfs?service=wfs&request=GetFeature&outputFormat=application/json&typeName=geotajak:features&srsname=EPSG:4326&count=1&startIndex=0&CQL_FILTER=' + encodeURIComponent(cql);
@@ -308,7 +309,33 @@ async function parcelClick(ll) {
   w.appendChild(btns);
   L.popup({ maxWidth: 320, autoPan: true }).setLatLng(ll).setContent(w).on('remove', clearParcel).openOn(map);
 }
+/* ───────────── جستجوی نقطه در لایه‌های برداری فعال (برای admin.js) ───────────── */
+function pipRing(ring, lat, lng) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+    if (((yi > lat) !== (yj > lat)) && (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi)) inside = !inside;
+  }
+  return inside;
+}
+function pipGeom(g, lat, lng) {
+  if (!g) return false;
+  const polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
+  for (const pl of polys) { if (pipRing(pl[0], lat, lng) && !pl.slice(1).some((h) => pipRing(h, lat, lng))) return true; }
+  return false;
+}
+function pointLookup(ll) {
+  const out = [], defs = allDefs();
+  Object.keys(active).forEach((id) => {
+    const def = defs[id]; const grp = active[id]; if (!def || !grp || !grp.eachLayer) return;
+    grp.eachLayer((sub) => { if (!sub.eachLayer) return; sub.eachLayer((ly) => {
+      const f = ly.feature; if (!f || !pipGeom(f.geometry, ll.lat, ll.lng)) return;
+      out.push({ layer: def.name, name: pickNameAny(f.properties || {}), props: f.properties || {} });
+    }); });
+  });
+  return out;
+}
 
 function init(m) { map = m; renderRefList(); restoreRefs(); }
-FM.vec = { init, renderRefList, addWfsDialog, parcelClick, parcelMode, toggleRef, _t: { extractGeojson, drawMvt, sahakTile, loadWfs, SahakGrid } };
+FM.vec = { init, renderRefList, addWfsDialog, parcelClick, parcelMode, toggleRef, pointLookup, loadWfs, _t: { extractGeojson, drawMvt, sahakTile, loadWfs, SahakGrid } };
 })(window);
