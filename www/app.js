@@ -331,4 +331,5 @@ renderHeading(); setDrawMode(null);
 FM.route.init(map);
 FM.vec.init(map);
 FM.project.init(map);
+if (FM.admin) FM.admin.init();
 })();
