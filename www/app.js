@@ -26,9 +26,25 @@ let lastLongPress = 0;
 map.on('click', (e) => {
   if (Date.now() - lastLongPress < 800) return;
   if (FM.isDrawingShape()) { addVertex(e.latlng); return; }
-  if (FM.vec.parcelMode()) { FM.vec.parcelClick(e.latlng); return; }   // حالت «نقطه» از لمس نقشه استفاده نمی‌کند، پس مانع انتخاب پارسل نیست
-  if (!draw.mode) closeSheets();
+  if (FM.vec.parcelMode()) { FM.vec.parcelClick(e.latlng); return; }
+  if (!draw.mode) { showPointInfo(e.latlng); }
 });
+
+async function showPointInfo(ll) {
+  if (!FM.admin) { closeSheets(); return; }
+  const w = el('div', { class: 'pop' });
+  w.appendChild(el('div', { class: 'pop-title', text: 'اطلاعات این نقطه' }));
+  w.appendChild(el('div', { class: 'pop-sub', dir: 'ltr', text: FM.fmtCoord(ll.lat, ll.lng).short }));
+  const body = el('div', { class: 'pop-desc', text: 'در حال استعلام…' }); w.appendChild(body);
+  const btns = el('div', { class: 'pop-btns' });
+  btns.appendChild(el('button', { type: 'button', text: 'ذخیره‌ی این نقطه', onclick: () => { savePointAt(ll); map.closePopup(); } }));
+  btns.appendChild(el('button', { type: 'button', text: 'مقصد', onclick: () => { FM.route.setDest(ll); map.closePopup(); } }));
+  w.appendChild(btns);
+  const pop = L.popup({ maxWidth: 300 }).setLatLng(ll).setContent(w).openOn(map);
+  const a = await FM.admin.lookup(ll);
+  body.textContent = FM.admin.describe(a) || 'اطلاعاتی یافت نشد.';
+  pop.update();
+}
 
 /* ───────────── نقشه‌ی زمینه، لایه‌های رویه و برداری ───────────── */
 function renderBaseList() {
@@ -67,6 +83,9 @@ function updateModeChip() {
   c.hidden = !on; if (on) c.textContent = 'انتخاب پارسل مشهد فعال — روی نقشه بزنید';
 }
 optParcel.addEventListener('change', () => { store.set('parcelManual', optParcel.checked); updateModeChip(); });
+const optAuto = $('#opt-autoinfo');
+optAuto.checked = store.get('autoInfo', true);
+optAuto.addEventListener('change', () => store.set('autoInfo', optAuto.checked));
 function updateCrosshair() { $('#crosshair').style.display = optCross.checked ? '' : 'none'; }
 optCross.addEventListener('change', () => { store.set('crosshair', optCross.checked); updateCrosshair(); });
 FM.onBaseChange = () => { updateModeChip(); renderBaseList(); };
@@ -75,7 +94,8 @@ FM.onBaseChange = () => { updateModeChip(); renderBaseList(); };
 async function settingsDialog() {
   const fld = (label, key, type, ph, hint) => {
     const i = type === 'ta' ? el('textarea', { class: 'field', rows: 3, dir: 'ltr', placeholder: ph }) : el('input', { type: 'text', class: 'field', dir: 'ltr', placeholder: ph });
-    i.value = store.get(key, ''); return { i, key, node: el('div', { class: 'frow col' }, [el('label', { text: label }), i].concat(hint ? [el('small', { class: 'hint', text: hint })] : [])) };
+        i.value = FM.store.get(key, ''); i.placeholder = FM.cfg(key) ? '(مقدار پیش‌فرض داخل برنامه فعال است)' : ph;
+    return { i, key, node: el('div', { class: 'frow col' }, [el('label', { text: label }), i].concat(hint ? [el('small', { class: 'hint', text: hint })] : [])) };
   };
   const fs = [
     fld('کلید Google Maps Platform (برای مسیریابی با ترافیک)', 'googleKey', 'in', 'AIza…', 'فعال بودن «Routes API» روی پروژه‌ی گوگل لازم است. بدون کلید، مسیریابی با OSRM یا «باز کردن در Google Maps» انجام می‌شود.'),
