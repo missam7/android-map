@@ -3,7 +3,7 @@
 'use strict';
 const FM = root.FM, { $, nf, toast, fmtLen, fmtDur, haversine, bearing, store, esc, el } = FM;
 const RAD = Math.PI / 180;
-let map = null, origin = null, dest = null, routes = [], mode = 'fast', sel = 0, nav = null;
+let map = null, origin = null, dest = null, routes = [], mode = 'fast', sel = 0, nav = null, forced = null;
 const group = L.layerGroup(), marks = {};
 
 /* ───────────── شبکه ───────────── */
@@ -183,7 +183,9 @@ function drawMarks() {
   $('#r-dest').textContent = dest ? dest.lat.toFixed(5) + ' , ' + dest.lng.toFixed(5) : 'انتخاب نشده';
 }
 function pickIndex() {
-  if (!routes.length) return 0; let best = 0;
+  if (!routes.length) return 0;
+  if (forced != null && forced < routes.length) return forced;
+  let best = 0;
   routes.forEach((r, i) => { const v = mode === 'fast' ? r.duration : r.distance, b = mode === 'fast' ? routes[best].duration : routes[best].distance; if (v < b) best = i; });
   return best;
 }
@@ -205,7 +207,7 @@ function showRoutes(fit) {
     const alt = el('div', { class: 'row' });
     routes.forEach((x, i) => alt.appendChild(el('button', { type: 'button', class: i === sel ? 'primary' : '',
       text: `مسیر ${nf(i + 1)}: ${fmtLen(x.distance)} / ${fmtDur(x.duration)}`,
-      onclick: () => { sel = i; pickIndex = () => i; showRoutes(false); } })));
+     onclick: () => { forced = i; showRoutes(false); } })));
     stepsBox.appendChild(alt);
   }
 
@@ -226,6 +228,7 @@ function setDest(ll) { dest = { lat: ll.lat, lng: ll.lng }; drawMarks(); if (FM.
 
 async function go() {
   if (!dest) { toast('اول مقصد را مشخص کنید.'); return; }
+  forced = null;
   let o = origin;
   if (!o) { const fix = FM.gps && FM.gps.last(); if (!fix) { FM.gps && FM.gps.start(); toast('موقعیت شما هنوز مشخص نیست؛ مبدا را انتخاب کنید یا چند ثانیه صبر کنید.', 4000); return; } o = { lat: fix.ll.lat, lng: fix.ll.lng, me: true }; }
   $('#r-go').disabled = true; $('#r-summary').textContent = 'در حال مسیریابی…';
@@ -258,6 +261,7 @@ async function reroute(p) {
   nav.lastReroute = Date.now(); toast('از مسیر خارج شدید؛ مسیر جدید محاسبه می‌شود…', 2500);
   try {
     const rs = (await compute({ lat: p.lat, lng: p.lng }, dest, $('#r-engine').value)).map(prep);
+    forced = null;
     routes = rs; showRoutes(false); nav.route = routes[sel]; nav.off = 0; nav.spoken = {};
   } catch (e) { toast('محاسبه‌ی مسیر جدید ممکن نشد.'); }
 }
